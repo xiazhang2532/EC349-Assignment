@@ -1,0 +1,184 @@
+---
+title: "EC349Assignment"
+author: '2114996'
+date: "2023-12-04"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+We're part of an academic community at Warwick.
+
+Whether studying, teaching, or researching, we’re all taking part in an expert conversation which must meet standards of academic integrity. When we all meet these standards, we can take pride in our own academic achievements, as individuals and as an academic community.
+
+Academic integrity means committing to honesty in academic work, giving credit where we've used others' ideas and being proud of our own achievements.
+
+In submitting my work I confirm that:
+
+1. I have read the guidance on academic integrity provided in the Student Handbook and understand the University regulations in relation to Academic Integrity. I am aware of the potential consequences of Academic Misconduct.
+
+2. I declare that the work is all my own, except where I have stated otherwise.
+
+3. No substantial part(s) of the work submitted here has also been submitted by me in other credit bearing assessments courses of study (other than in certain cases of a resubmission of a piece of work), and I acknowledge that if this has been done this may lead to an appropriate sanction.
+
+4. Where a generative Artificial Intelligence such as ChatGPT has been used I confirm I have abided by both the University guidance and specific requirements as set out in the Student Handbook and the Assessment brief. I have clearly acknowledged the use of any generative Artificial Intelligence in my submission, my reasoning for using it and which generative AI (or AIs) I have used. Except where indicated the work is otherwise entirely my own.
+
+5. I understand that should this piece of work raise concerns requiring investigation in relation to any of points above, it is possible that other work I have submitted for assessment will be checked, even if marks (provisional or confirmed) have been published.
+
+6. Where a proof-reader, paid or unpaid was used, I confirm that the proofreader was made aware of and has complied with the University’s proofreading policy.
+
+7. I consent that my work may be submitted to Turnitin or other analytical technology. I understand the use of this service (or similar), along with other methods of maintaining the integrity of the academic process, will help the University uphold academic standards and assessment fairness.
+
+Privacy statement
+
+The data on this form relates to your submission of coursework. The date and time of your submission, your identity, and the work you have submitted will be stored. We will only use this data to administer and record your coursework submission.
+\newpage
+
+# Introduction:
+This project applies John Rallins' General DS Methodology to predict user star ratings for businesses. This methodology is more suitable compared to the CRISP-DM methodology taught in this module. This choice arises primarily because CRISP-DM focuses too much on the initial stage of business understanding, which is irrelevant to this project. CRISP-DM is also document-heavy, and given the word count restriction, a more concise account is preferred for the project. This report is structured into three main phases and ten stages according to John Rallin’s methodology to illustrate how it is applied. It concludes with a paragraph on challenges.
+
+# Phase 1: Problem definition:
+## Stage 1: Problem understanding:
+The assignment aims to "predict how users like different establishments". The precise objective of this project is to predict the star rating of a particular review left by a user on a business. 
+
+## Stage 2: Analytical Approach:
+Given the predictive nature of the problem, the project adopts predictive analytics to develop a model that can forecast future star ratings for reviews.
+
+# Phase 2: Data Understanding & Organization:
+## Stage 3: Data Requirement:
+Comprehensive cross-sectional data on each review is necessary to answer the question, including details such as star ratings, user characteristics and business attributes.
+
+## Stage 4: Data Collection:
+Five datasets from Yelp covering users, user reviews, user check-ins, business, and user tips are provided. Smaller versions of user and review datasets are used due to loading issues in R. 
+
+## Stage 5: Data Understanding:
+```{r warning=FALSE, message=FALSE}
+library(jsonlite)
+library(tidyverse)
+library(tree)
+library(rpart)
+library(rpart.plot)
+library(caret)
+```
+
+```{r warning=FALSE, message=FALSE, results='hide'}
+setwd("/Users/zhangxia/Desktop/Assignment")
+load(file = "/Users/zhangxia/Desktop/Assignment/yelp_review_small.Rda")
+load(file = "/Users/zhangxia/Desktop/Assignment/yelp_user_small.Rda")
+business_data <- stream_in(file("yelp_academic_dataset_business.json"))
+checkin_data  <- stream_in(file("yelp_academic_dataset_checkin.json")) 
+tip_data  <- stream_in(file("yelp_academic_dataset_tip.json")) 
+```
+
+The user review dataset is essential in this analysis as it contains the outcome variable: the star rating of each review. However, it lacks more detailed user and business information, requiring other datasets to complement it.
+
+The user dataset provides insights into user characteristics. Average user reviews can hint at a user’s general preference for rating high or low. The business dataset contains information on business attributes and features, such as ambience and parking facilities. The business star rating can be an essential factor in prediction as it reflects its overall quality. However, the exact explanatory variables are determined during the modelling stage. 
+
+The check-in dataset is less helpful in prediction as it contains the business check-in time only. The same applies to the primarily textual tip dataset due to their limited predictive power for user star ratings compared to other predictors. 
+
+
+## Stage 6: Data Preperation:
+```{r}
+review_user <- left_join(review_data_small, user_data_small, by = "user_id")
+finaldf <- left_join(review_user, business_data, by = "business_id")
+```
+
+Review data is insufficient in prediction. Business and user datasets provide essential predictive information. These three datasets are merged together. Tip and check-in datasets, offering limited information, are excluded.
+
+```{r}
+class(finaldf$stars.x)
+finaldf$stars.x <- as.factor(finaldf$stars.x)
+```
+
+The outcome variable, star rating, is initially stored in numeric, i.e., continuous form while users can only give discrete ratings. It is transformed into a categorical format with five discrete categories (1-5). 
+
+```{r}
+finaldf_small<-finaldf%>%
+  select(stars.x, stars.y, average_stars)
+```
+
+This code chunk removes unused variables from the dataset. The selection of average stars a user gives (average_stars) and the star rating of a business (stars.y) as predictors are explained in the evaluation stage. A complete data frame was used intially and failed to yield any results.
+
+```{r}
+finaldf_small_noNA <- finaldf_small%>%
+  drop_na() 
+```
+
+Omit rows with NA as they fail to provide information required for the tree and delays the running process.
+
+```{r}
+set.seed(1) 
+train <- sample(1:nrow(finaldf_small_noNA), 3*nrow(finaldf_small_noNA)/4) 
+data_train <-finaldf_small_noNA[train,]
+data_test<-finaldf_small_noNA[-train,]
+nrow(data_test)
+```
+
+Split into test and training by 3/4 and 1/4. The test dataset has 69970 observations.
+
+# Phase 3: Validation & Deployment:
+## Stage 7: Modelling:
+
+Referring back to stage 2: Analytical Approach, this project employs predictive analytics to predict user review star ratings. Since the outcome variable of interest, star rating is observed in the user review dataset, this project is a **supervised learning** work. 
+
+Available approaches are OLS, Shrinkage estimation (Ridged and Lasso), Logistic regression, and Decision trees. **Flexible learning methods** are more appropriate in this analysis due to the following:
+
+- a non-linear and non-addictive relationship between explanatory and outcome variables is possible: linear models (OLS and shrinkage estimations) are ruled out;
+- the underlying probability distribution of the data is unknown, suggesting a possibility of non-parametric distribution for the error term: logistic regression is ruled out;
+- we have a large number of observations and a significantly smaller number of predictors;
+- flexible learning methods do not impose assumptions about the underlying distribution of the data; 
+- no constraint nor guidance is available from any theoretic explanations in the project instruction;
+- the predictive purpose of this project outweighs the need to interpret results as the ultimate objective of the project is to predict certain outcomes. 
+
+Among flexible learning methods, the **classification tree** is chosen because the outcome variable: star rating, is a discrete variable with 5 categories.
+
+```{r}
+set.seed(1312) 
+tree1<-tree(stars.x ~ ., data=data_train) 
+plot(tree1)
+text(tree1, pretty = 0.1)
+title(main = "Unpruned Classification Tree")
+```
+
+- with tree library. Star.x is the star of a review. Average_stars is the average star rating a user gives in the past. Star.y is the star rating of a business.
+
+```{r}
+set.seed(1312) 
+rpart_tree<-rpart(stars.x ~., data=data_train)
+rpart.plot(rpart_tree)
+```
+
+- with rpart library.
+
+Despite slight differences in internal nodes and branches between the tree and rpart libraries, they produce similar results in the parent nodes and leaves. Both indicate that a user's average stars given in the past offer the most information, making it the top parent node. Moreover, both trees end with three distinct star ratings (1, 4, and 5) as their leaves.
+
+## Stage 8: Evaluation 
+
+Unfortunately, the leaves do not represent all five star rating categories, limiting the tree’s predictiveness. One may doubt whether the choice of predictors contributes to this shortcoming. A trial and error process involving over 30 explanatory variables concludes that average stars and business star ratings are the most influential factors which generate maximum leave categories. When star rating and average stars are included with other explanatory variables such as useful, these additional variables do not appear as nodes in the tree. Exclusion of either average stars or star ratings results in fewer leave types, even with the inclusion of other variables. Therefore, the model is refined to include only average_stars and star.y as predictors. The decision to manually select predictors through the trial-and-error process is because the code "rpart_tree<-rpart(stars.x ~., data=finaldf)" on the general dataset does not produce any results or errors - it runs infinitely without giving anything. The trial and error of different predictors remains the only solution. Had this code worked, it might have generated more or the same number of leaf types. 
+```{r}
+pred_train = predict(rpart_tree, data_train, type = "class")
+confusionMatrix(pred_train, data_train$stars.x)
+```
+- for training data accuracy.
+
+The results show that the model accurately fits 53.68% of the training data - a relatively low accuracy mainly due to the absence of predicted outcomes for categories 2 and 3. Despite this shortcoming, the balanced accuracy demonstrates relatively good predictions for classes 1 and 5.
+
+```{r}
+pred_test = predict(rpart_tree, data_test, type = "class")
+confusionMatrix(pred_test, data_test$stars.x) 
+```
+- for test data accuracy
+
+Although the tree does not represent all 5 categories, it manages to predict over half of the test data with a prediction accuracy of 0.5347. This is quite notable given the absence of categories 2 and 3. This marginal decrease from the training data suggests that the model performs nearly as well on the test data. 
+
+
+
+## Stage 9&10: Deployment&Feedback
+Since this project is a hypothetical one, these two stages regarding actual implementation are not included.
+
+
+# Challenges:
+During modelling, a significant challenge occurred as the rpart_tree code for the extensive finaldf ran indefinitely on my laptop without giving results or error messages. After searching online, it seems like the dataset is so huge and complicated that the capacity of my laptop cannot handle it. I instead used a trial-and-error approach, testing a smaller dataset with over 30 different predictor combinations. Ultimately, I identified two predictors: average_star and star.y which give the highest accuracy and the maximum number of leaf categories. Despite failing my expectations for five leaf categories, this outcome is the best achievable result.
+
+
+word count: 1249
